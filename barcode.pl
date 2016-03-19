@@ -1,107 +1,53 @@
 #!/usr/bin/perl
 #
 # RPi: PoC: ISBN Barcode Scanner Sample w/ USB UVC camera
-# 
-# ./
-#   img/   -> guvcview's save folder
-#   pass/  -> good images
-#   fail/  -> bad images
 #
 # Usage:
-#   apt-get install guvcview zbar-tools
+#   apt-get install zbar-tools
 #
-#   Attach a USB UVC web cam.
-#   Configure guvcview to save files to "img" folder above.
-#     eg) emacs ~/.config/guvcview/video1
-#   Launch this script. It monitors "img" folder.
-#     eg) ./barcode.pl
-#   Launch guvcview and press "i" to capture image that contains bar codes.
-#     eg) guvcview -d /dev/video1
-#   Then the image file gets processed by zbarimg.
-#   If it recognizes a valid ISBN code, this script then sends a request
+#   Attach a USB UVC web cam on RPi3.
+#   Make sure zbarimg can preview the video.
+#   Put your barcode in front of the camera.
+#   Once it recognizes a valid ISBN code, this script then sends a request
 #   to NDL OpenSearch API to retrieve book data from the ISBN code.
-#   The book data is then stored in a KVS (kvs.gdbm)
-#   as a hash like this.
+#   The book data is then stored in a KVS (kvs.gdbm) as a hash like this.
 #   {
 #      ISBN_code => 'serialized_book_data',
 #   };
 #
-#   For later reference, the image file is moved to pass/ or fail/
-#   depending on whether a valid ISBN was recognized or not.
-#
 #   You can dump out the KVS contents by dump.pl.
 #
 use strict;
-use File::Copy qw(move copy);
-use File::Path qw(mkpath);
 use GDBM_File;
 use Data::Dumper;
 local $Data::Dumper::Indent = 4;
 local $Data::Dumper::Terse = 1;
-
-# clean up folders
-foreach my $dir (qw(pass fail img))
-{
-    mkpath $dir; # just in case it does not exist
-    opendir DIR, "$dir" or die "cannot open pass folder";
-    unlink map { "$dir/$_" } grep !/^\./, readdir(DIR);
-    closedir DIR;
-}
 
 my %kvs;
 tie %kvs, 'GDBM_File', 'kvs.gdbm', &GDBM_WRCREAT, 0600;
 chdir "img";
 my $num = 0;
 
-while (1)
+open ZBAR, "zbarcam |"  or die "cannot open zbarimg";
+my $isbn = "";
+while (<ZBAR>)
 {
-    # monitors "img" folder.
-    opendir DIR, "." or die "cannot open img folder";
-    my @files = grep !/^\./, readdir(DIR);
-
-    # once new files are generated, process it by zbarimg.
-    foreach my $file (@files)
+    if (/^EAN-13:(9\d{12})/)
     {
-        print "file=$file\n";
-        open ZBAR, "zbarimg $file|"  or die "cannot open zbarimg";
-        my $isbn = "";
-        while (<ZBAR>)
-        {
-            if (/^EAN-13:(\d{13})/)
-            {
-                $isbn = $1; # ok to overwrite, as we need the second one
-            }
-        }
-        close ZBAR;
+	$isbn = $1;
 
-        # if a valid ISBN code is returned, query NDL API
-        if ($isbn ne "")
-        {
-            my $request = "curl http://iss.ndl.go.jp/api/opensearch?isbn=$isbn";
-            print "OK: request=$request\n";
-            open CURL, "$request|" or die "cannot open curl";
-            my @curl = <CURL>;
-            close CURL;
+	my $request = "curl http://iss.ndl.go.jp/api/opensearch?isbn=$isbn";
+	print "OK: request=$request\n";
+	open CURL, "$request|" or die "cannot open curl";
+	my @curl = <CURL>;
+	close CURL;
 
-            # parse API response and create a concise hash, then store it in a KVS
-            my $entry = ParseResponse(@curl);
-            $kvs{$isbn} = $entry;
-
-            move $file, "../pass/photo-$num.jpg";
-        }
-        else
-        {
-            move $file, "../fail/photo-$num.jpg";
-            print "NG: failed to recognize ISBN\n";
-        }
-        
-        unlink $file;
-        $num++;
+	# parse API response and create a concise hash, then store it in a KVS
+	my $entry = ParseResponse(@curl);
+	$kvs{$isbn} = $entry;
     }
-    
-    closedir DIR;
-    sleep 1;
 }
+close ZBAR;
 
 # Parse NDL API response and create a concise hash
 # (Very quick&easy XML parsing code)
