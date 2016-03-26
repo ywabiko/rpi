@@ -1,0 +1,10 @@
+hidscan - HID scanner sample for RPi3
+
+This is derived from HIDAPI.
+	git clone git://github.com/signal11/hidapi.git
+
+
+USAGE:
+  $ make
+
+  $ sudo cp etc/50-usb-hid.rules /etc/udev/rules.d/

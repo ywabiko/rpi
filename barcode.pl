@@ -2,14 +2,17 @@
 #
 # RPi: PoC: ISBN Barcode Scanner Sample w/ USB UVC camera
 #
-# Usage:
-#   apt-get install zbar-tools
+# Usage 1: laser scanner mode
+#   Attach the laser scanner and run:
+#   $ hidscan/hidscan
+#   Once it reads a barcode, it launches this script with the 1st
+#   argument being the barcode string.
 #
-#   Attach a USB UVC web cam on RPi3.
-#   Make sure zbarimg can preview the video.
-#   Put your barcode in front of the camera.
-#   Once it recognizes a valid ISBN code, this script then sends a request
-#   to NDL OpenSearch API to retrieve book data from the ISBN code.
+#   Once this script obtains a valid ISBN code, this script then sends
+#   a request to NDL OpenSearch API to retrieve book data from the
+#   ISBN code.
+#       http://iss.ndl.go.jp/api/opensearch?isbn=[ISBN_CODE]
+#
 #   The book data is then stored in a KVS (kvs.gdbm) as a hash like this.
 #   {
 #      ISBN_code => 'serialized_book_data',
@@ -17,6 +20,15 @@
 #
 #   You can dump out the KVS contents by dump.pl.
 #
+# Usage 2: image recognition mode
+#   $ apt-get install zbar-tools
+#   Attach a USB UVC web cam on RPi3 and run this script.
+#   Make sure zbarimg can preview the video.
+#   Put your barcode in front of the camera.
+#   Once this script obtains a valid ISBN code, the remaining part is
+#   the same as above.
+#
+
 use strict;
 use GDBM_File;
 use Data::Dumper;
@@ -25,29 +37,42 @@ local $Data::Dumper::Terse = 1;
 
 my %kvs;
 tie %kvs, 'GDBM_File', 'kvs.gdbm', &GDBM_WRCREAT, 0600;
-chdir "img";
 my $num = 0;
 
-open ZBAR, "zbarcam |"  or die "cannot open zbarimg";
-my $isbn = "";
-while (<ZBAR>)
+my ($isbn) = @ARGV;
+
+if ($isbn =~ /^(9\d{12})/) # laser scanner mode
 {
-    if (/^EAN-13:(9\d{12})/)
-    {
-	$isbn = $1;
-
-	my $request = "curl http://iss.ndl.go.jp/api/opensearch?isbn=$isbn";
-	print "OK: request=$request\n";
-	open CURL, "$request|" or die "cannot open curl";
-	my @curl = <CURL>;
-	close CURL;
-
-	# parse API response and create a concise hash, then store it in a KVS
-	my $entry = ParseResponse(@curl);
-	$kvs{$isbn} = $entry;
-    }
+    print "Find: ISBN: $isbn\n";
+    ProcessISBN($isbn);
 }
-close ZBAR;
+else # image recognition (camera) mode
+{
+    open ZBAR, "zbarcam |"  or die "cannot open zbarimg";
+    my $isbn = "";
+    while (<ZBAR>)
+    {
+	if (/^EAN-13:(9\d{12})/)
+	{
+	    $isbn = $1;
+	    ProcessISBN($isbn);
+	}
+    }
+    close ZBAR;
+}
+
+sub ProcessISBN
+{
+    my $request = "curl http://iss.ndl.go.jp/api/opensearch?isbn=$isbn";
+    print "OK: request=$request\n";
+    open CURL, "$request|" or die "cannot open curl";
+    my @curl = <CURL>;
+    close CURL;
+
+    # parse API response and create a concise hash, then store it in a KVS
+    my $entry = ParseResponse(@curl);
+    $kvs{$isbn} = $entry;
+}
 
 # Parse NDL API response and create a concise hash
 # (Very quick&easy XML parsing code)
