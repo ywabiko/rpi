@@ -20,13 +20,26 @@
 #
 #   You can dump out the KVS contents by dump.pl.
 #
-# Usage 2: image recognition mode
+# Usage 2: image recognition mode with official RPi camera module
 #   $ apt-get install zbar-tools
+#
+#   Hack your camera module to shorten focual length to 5cm or so.
+#   Make sure zbarimg can preview the video.
+#   Put your barcode in front of the camera.
+#   Once this script obtains a valid ISBN code, the remaining part is
+#   the same as above.
+#   This achieves good frame rate (~30fps) but requires physical hack
+#   that may break your camera module.
+#
+# Usage 3: image recognition mode with USB UVC camera (diabled)
+#   $ apt-get install zbar-tools
+#
 #   Attach a USB UVC web cam on RPi3 and run this script.
 #   Make sure zbarimg can preview the video.
 #   Put your barcode in front of the camera.
 #   Once this script obtains a valid ISBN code, the remaining part is
 #   the same as above.
+#   A drawback is low frame rate (1-2fps).
 #
 
 use strict;
@@ -48,7 +61,8 @@ if ($isbn =~ /^(9\d{12})/) # laser scanner mode
 }
 else # image recognition (camera) mode
 {
-    open ZBAR, "zbarcam |"  or die "cannot open zbarimg";
+    system("v4l2-ctl --overlay=1");
+    open ZBAR, "zbarcam -v --nodisplay --prescale=640x480 |"  or die "cannot open zbarimg";
     my $isbn = "";
     while (<ZBAR>)
     {
@@ -60,6 +74,7 @@ else # image recognition (camera) mode
 	}
     }
     close ZBAR;
+    system("v4l2-ctl --overlay=0");
 }
 
 sub ProcessISBN
