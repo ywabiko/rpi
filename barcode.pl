@@ -52,6 +52,7 @@ else # image recognition (camera) mode
     my $isbn = "";
     while (<ZBAR>)
     {
+	print;
 	if (/^EAN-13:(9\d{12})/)
 	{
 	    $isbn = $1;
@@ -63,6 +64,7 @@ else # image recognition (camera) mode
 
 sub ProcessISBN
 {
+    my ($isbn) = @_;
     my $request = "curl http://iss.ndl.go.jp/api/opensearch?isbn=$isbn";
     print "OK: request=$request\n";
     open CURL, "$request|" or die "cannot open curl";
