@@ -218,7 +218,7 @@ int main(int argc, char* argv[])
                     if (len == 13)
                     {
                         printf("\nGot ISBN: [%s]\n", outbuf);
-                        char* args[] = { "./barcode.pl", outbuf, NULL };
+                        char* args[] = { "./py/barcode.py", outbuf, NULL };
                         execvp(args[0], args);
                     }
                     else
